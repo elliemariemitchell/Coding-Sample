@@ -19,11 +19,13 @@ library(powerjoin)
 library(dplyr)
 library(srvyr)
 library(stargazer)
+library(broom)
 
 # Data Merging 2015 - 2024 -------------------------------------------------
 #### Retrieving data ----------------------------------------------------------
 file_path <- "/Users/rental/Library/CloudStorage/Box-Box/American Family Survey/"
 chart_path <- "/Users/rental/Desktop/Coding Sample/Charts/"
+reg_path <- "/Users/rental/Desktop/Coding Sample/Regressions/"
 
 data_15 <- read_dta(str_c(file_path,
                           "2015 American Family Survey/Data/Other Datasets/BYUC0007_OUTPUT- 2015-08-28 download with weights.dta"))
@@ -1131,5 +1133,212 @@ find_datasets_with_small_n <- function() {
 # Using the function
 datasets_with_small_n <- find_datasets_with_small_n() 
 print(datasets_with_small_n)
+
+
+# Regressions --------------------------------------------------------------
+# 2024 Life Satisfaction Regressions -------------------------------------------
+# Some variable cleaning before the regression:
+canonical_data <- canonical_data %>%
+  mutate(MAR001_1 = case_when(MAR001_1 == 6 ~ NA,
+                              MAR001_1 == 8 ~ NA,
+                              TRUE ~ MAR001_1),
+         MAR001_2 = case_when(MAR001_2 == 6 ~ NA,
+                              MAR001_2 == 8 ~ NA,
+                              TRUE ~ MAR001_2),
+         MAR001_3 = case_when(MAR001_3 == 6 ~ NA,
+                              MAR001_3 == 8 ~ NA,
+                              TRUE ~ MAR001_3),
+         MAR001_4 = case_when(MAR001_4 == 6 ~ NA,
+                              MAR001_4 == 8 ~ NA,
+                              TRUE ~ MAR001_4),
+         MAR001_5 = case_when(MAR001_5 == 6 ~ NA,
+                              MAR001_5 == 8 ~ NA,
+                              TRUE ~ MAR001_5),
+         MAR001_6 = case_when(MAR001_6 == 6 ~ NA,
+                              MAR001_6 == 8 ~ NA,
+                              TRUE ~ MAR001_6),
+         MAR001_7 = case_when(MAR001_7 == 6 ~ NA,
+                              MAR001_7 == 8 ~ NA,
+                              TRUE ~ MAR001_7))
+
+# Flipping the satisfaction answer values so that the more satisfied you are, 
+# the higher the number is
+canonical_data <- canonical_data %>%
+  mutate(
+    job_satis = 6 - MAR001_1,
+    family_satis = 6 - MAR001_2,
+    relat_satis = 6 - MAR001_3,
+    life_satis = 6 - MAR001_4,
+    community_satis = 6 - MAR001_5,
+    mental_satis = 6 - MAR001_6,
+    sex_satis = 6 - MAR001_7
+  )
+
+# Labeling the new life satisfaction variable:
+val_labels(canonical_data$life_satis) <- c("Completely dissatisfied" = 1,
+                                           "Somewhat dissatisfied" = 2,
+                                           "Neutral/Don't know" = 3,
+                                           "Somewhat satisfied" = 4,
+                                           "Completely satisfied" = 5)
+
+# Making the new 2024 dataset:
+data24 <- canonical_data %>%
+  filter(yeartaken == 2024)
+
+# Super basic regression
+# fixing a variable really quick:
+data24$faminc2[data24$faminc2 == ""] <- NA
+
+# Okay I chose the four I thought would be most interesting (marital status, 
+# income, race, and if you've had marital/relationship problems in the last two 
+# years). 
+satisfaction_24_basic <- lm(life_satis ~
+                              as.factor(relstat) + 
+                              as.factor(faminc2) + 
+                              as.factor(gender) +
+                              as.factor(race2),
+                            data = data24)
+
+summary(satisfaction_24_basic)
+# Base categories: Married, income is below 30k, white
+
+# Full
+satisfaction_24_full <- lm(life_satis ~
+                             as.factor(relstat) + 
+                             as.factor(faminc2) + 
+                             as.factor(gender) +
+                             as.factor(race2) + 
+                             as.factor(religpew) +
+                             as.factor(agecategory) +
+                             as.factor(educ3) +
+                             as.factor(childgroup),
+                           data = data24)
+summary(satisfaction_24_full)
+# Base categories: Married, income is below 30k, white, Protestant, 18-29, 
+# male, hs or less, no children
+
+# Full, limited to those who are married
+only_mar24 <- data24 %>%
+  filter(relstat == 1)
+
+satisfaction_24_only_mar <- lm(life_satis ~
+                                 as.factor(faminc2) + 
+                                 as.factor(gender) +
+                                 as.factor(race2) + 
+                                 as.factor(religpew) +
+                                 as.factor(agecategory) +
+                                 as.factor(educ3) +
+                                 as.factor(childgroup),
+                               data = only_mar24)
+summary(satisfaction_24_only_mar)
+
+stargazer(satisfaction_24_basic,
+          satisfaction_24_full,
+          satisfaction_24_only_mar, 
+          covariate.labels = c("Intercept", 
+                               "Living with a Partner",
+                               "In a Relationship",
+                               "Not in a Relationship", 
+                               "Income Level: $30,000 - $49,999", 
+                               "Income Level: $50,000 - $79,999", 
+                               "Income Level: $80,000 - $99,999", 
+                               "Income Level: $100,000+", 
+                               "Female", 
+                               "Black", 
+                               "Hispanic", 
+                               "Asian",
+                               "Roman Catholic", 
+                               "Mormon",
+                               "Eastern or Greek Orthodox",
+                               "Jewish",
+                               "Muslim",
+                               "Buddhist",
+                               "Hindu",
+                               "Atheist",
+                               "Agnostic",
+                               "Religion: Nothing in Particular",
+                               "Religion: Something Else",
+                               "30-44", 
+                               "45-54",
+                               "55-64",
+                               "65+",
+                               "Some College", 
+                               "College or More",
+                               "1-3 Kids",
+                               "4-6 Kids",
+                               "7-9 Kids",
+                               "10+ Kids"), 
+          type = "html", 
+          style = "apsr", 
+          title = "Regression Results 2024", 
+          dep.var.labels = "",
+          column.labels = c("Basic Regression",
+                            "Full Regression",
+                            "Full Regression with Only Those who are Married"),
+          notes = c("Base categories: Married, income is below 30k, white, Protestant, 18-29, male, hs or less, no children"),
+          intercept.bottom = FALSE, 
+          intercept.top= TRUE, 
+          out = str_c(reg_path, "24_life_satisf_basic.htm"))
+
+# Making a coefficient plot using the basic, full regression
+# Extracting regression results
+reg_results_full24 <- tidy(satisfaction_24_full)
+
+# Creating the plot
+coef_plot_full24 <- ggplot(reg_results_full24, 
+                           aes(x = term, 
+                               y = estimate, 
+                               ymin = estimate - 1.96 * std.error, 
+                               ymax = estimate + 1.96 * std.error)) +
+  geom_pointrange(aes(color = p.value <= 0.05), 
+                  size = 0.4) + 
+  scale_color_manual(values = c("TRUE" = "black", 
+                                "FALSE" = "gray70")) + 
+  coord_flip() +  
+  scale_x_discrete(limits = c("as.factor(agecategory)65+",
+                              "as.factor(agecategory)55-64",
+                              "as.factor(agecategory)45-54",
+                              "as.factor(agecategory)30-44",
+                              "as.factor(faminc2)100,000+", 
+                              "as.factor(faminc2)$80,000 - $99,999", 
+                              "as.factor(faminc2)$50,000 - $79,999",
+                              "as.factor(faminc2)$30,000 - $49,999",
+                              "as.factor(relstat)4",
+                              "as.factor(relstat)3",
+                              "as.factor(relstat)2",
+                              "as.factor(gender)2"), 
+                   labels = c("Age: 65+",
+                              "Age: 55-64",
+                              "Age: 45-54",
+                              "Age: 30-44",
+                              "Income: $100,000+",
+                              "Income: $80,000 - $99,999", 
+                              "Income: $50,000 - $79,999", 
+                              "Income: $30,000 - $49,999", 
+                              "Not in a Relationship",
+                              "In a Relationship",
+                              "Living with a Partner",
+                              "Female")) + 
+  geom_hline(yintercept = 0, 
+             color = "gray30",
+             linetype = "dashed") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.caption = element_text(hjust = 0)) +
+  labs(title = "2024 Life Satisfaction Coefficient Plot",
+       x = "Variables",
+       y = "Estimate", 
+       color = "",
+       caption = "Bars are 95% confidence intervals. Black lines indicate statistical significance.")
+
+coef_plot_full24
+
+# Saving out this plot:
+ggsave(str_c(reg_path, "2024 Life Satisfaction Coefficient Plot.png"),
+       plot = coef_plot_full24,
+       width = 6,
+       height = 4,
+       dpi = 300,
+       bg = "white")
 
 #### END ----------------------------------------------------------------------
